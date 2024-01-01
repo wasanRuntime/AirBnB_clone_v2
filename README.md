@@ -50,7 +50,7 @@ Commands | Description | Usage
 ## Tests
 
 If you wish to run at the test for this application all of the test are located
-under the **test/** folder and can execute all of them by simply running:
+under the **test/** folder and can execute all of them by simply running this:
 
 ```python3 -m unittest discover tests ```
 
