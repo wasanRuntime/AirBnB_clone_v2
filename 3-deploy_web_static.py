@@ -1,62 +1,83 @@
 #!/usr/bin/python3
 """
-Fabric script that generates archive
+do_pack(): Generates a .tgz archive from the
+contents of the web_static folder
+do_deploy(): Distributes an archive to a web server
+deploy (): Creates and distributes an archive to a web server
 """
 
-from fabric.api import *
+from fabric.operations import local, run, put
 from datetime import datetime
 import os
+from fabric.api import env
+import re
 
-env.hosts = ["52.3.252.142", "18.207.139.15"]
-env.user = "ubuntu"
+
+env.hosts = ["35.175.128.0", "100.25.4.246"]
 
 
 def do_pack():
-    """
-        return the archive path if correctly gernerated.
-    """
-
+    """Function to compress files in an archive"""
     local("mkdir -p versions")
-    date = datetime.now().strftime("%Y%m%d%H%M%S")
-    archived_f_path = "versions/web_static_{}.tgz".format(date)
-    t_gzip_archive = local("tar -cvzf {} web_static".format(archived_f_path))
-
-    if t_gzip_archive.succeeded:
-        return archived_f_path
-    else:
+    filename = "versions/web_static_{}.tgz".format(datetime.strftime(
+                                                   datetime.now(),
+                                                   "%Y%m%d%H%M%S"))
+    result = local("tar -cvzf {} web_static"
+                   .format(filename))
+    if result.failed:
         return None
+    return filename
 
 
 def do_deploy(archive_path):
-    """
-        Distribute an archive to our web servers
-    """
-    if os.path.exists(archive_path):
-        archived_file = archive_path[9:]
-        newest_version = "/data/web_static/releases/" + archived_file[:-4]
-        archived_file = "/tmp/" + archived_file
-        put(archive_path, "/tmp/")
-        run("sudo mkdir -p {}".format(newest_version))
-        run("sudo tar -xzf {} -C {}/".format(archived_file,
-                                             newest_version))
-        run("sudo rm {}".format(archived_file))
-        run("sudo mv {}/web_static/* {}".format(newest_version,
-                                                newest_version))
-        run("sudo rm -rf {}/web_static".format(newest_version))
-        run("sudo rm -rf /data/web_static/current")
-        run("sudo ln -s {} /data/web_static/current".format(newest_version))
-
-        print("New version deployed!")
-        return True
-
-    return False
+    """Function to distribute an archive to a server"""
+    if not os.path.exists(archive_path):
+        return False
+    rex = r'^versions/(\S+).tgz'
+    match = re.search(rex, archive_path)
+    filename = match.group(1)
+    res = put(archive_path, "/tmp/{}.tgz".format(filename))
+    if res.failed:
+        return False
+    res = run("mkdir -p /data/web_static/releases/{}/".format(filename))
+    if res.failed:
+        return False
+    res = run("tar -xzf /tmp/{}.tgz -C /data/web_static/releases/{}/"
+              .format(filename, filename))
+    if res.failed:
+        return False
+    res = run("rm /tmp/{}.tgz".format(filename))
+    if res.failed:
+        return False
+    res = run("mv /data/web_static/releases/{}"
+              "/web_static/* /data/web_static/releases/{}/"
+              .format(filename, filename))
+    if res.failed:
+        return False
+    res = run("rm -rf /data/web_static/releases/{}/web_static"
+              .format(filename))
+    if res.failed:
+        return False
+    res = run("rm -rf /data/web_static/current")
+    if res.failed:
+        return False
+    res = run("ln -s /data/web_static/releases/{}/ /data/web_static/current"
+              .format(filename))
+    if res.failed:
+        return False
+    print('New version deployed!')
+    return True
 
 
 def deploy():
-    """
-    Deploy function do_pack and do_deploy.
-    """
-    path = do_pack()
-    if path:
-        do_deploy(path)
-    return False
+    """Creates and distributes an archive to a web server"""
+    filepath = do_pack()
+    if filepath is None:
+        return False
+
+    rex = r'^versions/(\S+).tgz'
+    match = re.search(rex, filepath)
+    version = match.group(1)
+
+    d = do_deploy(filepath)
+    return d
